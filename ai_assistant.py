@@ -2,7 +2,7 @@
 import ollama
 
 from storage import load_expenses
-from expense_manager import show_total, category_summary
+from expense_manager import show_total, category_summary, search_expenses
 
 
 
@@ -31,6 +31,23 @@ tools = [
                 "type": "object",
                 "properties": {},
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_expenses",
+            "description": "Search the user's expenses by category, description, or date.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "search_term": {
+                        "type": "string",
+                        "description": "The text to search for in the expense category, description, or date."
+                    }
+                },
+                "required": ["search_term"]
             }
         }
     }
@@ -91,6 +108,16 @@ def ask_ai(question: str, expenses: dict) -> str:
                 "categories": summary,
                 "total": total
             }
+            messages.append(
+                {
+                    "role": "tool",
+                    "content": str(result)
+                }
+            )
+
+        elif tool_name == "search_expenses":
+            search_term = tool_call.function.arguments.get("search_term", "")
+            result = search_expenses(expenses, search_term)
 
             messages.append(
                 {
@@ -98,6 +125,7 @@ def ask_ai(question: str, expenses: dict) -> str:
                     "content": str(result)
                 }
             )
+
 
         else:
             messages.append(
