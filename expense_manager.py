@@ -115,3 +115,47 @@ def merge_sort(expenses: list, key) -> list:
 
     return result
 
+
+def sort_expenses(expenses: dict, sort_by: str, descending: bool = False) -> list:
+    expense_list = []
+
+    for category, category_expenses in expenses.items():
+        for money, description, time in category_expenses:
+            expense_list.append(
+                {
+                    "category": category,
+                    "money": money,
+                    "description": description,
+                    "date": time
+                }
+            )
+
+    sort_aliases = {
+        "amount": "amount",
+        "money": "amount",
+        "price": "amount",
+        "cost": "amount",
+        "date": "date",
+        "category": "category",
+        "description": "description"
+    }
+
+    sort_by = sort_aliases.get(sort_by.lower())
+
+    if sort_by is None:
+        return []
+
+    keys = {
+        "amount": lambda expense: expense["money"],
+        "date": lambda expense: expense["date"],
+        "category": lambda expense: expense["category"].lower(),
+        "description": lambda expense: expense["description"].lower()
+    }
+    
+    expense_list = merge_sort(expense_list, keys[sort_by])
+
+    if descending:
+        expense_list.reverse()
+
+    return expense_list
+

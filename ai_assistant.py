@@ -2,8 +2,7 @@
 import ollama
 
 from storage import load_expenses
-from expense_manager import show_total, category_summary, search_expenses, add_expense, delete_expense, edit_expense
-
+from expense_manager import show_total, category_summary, search_expenses, add_expense, delete_expense, edit_expense, sort_expenses
 
 
 MODEL = "qwen2.5:3b"
@@ -46,6 +45,14 @@ SYSTEM_PROMPT = (
     "not simply on individual keywords. "
     "For example, coffee, meals, restaurants, groceries, and food delivery normally belong to Food. "
     "If an expense is ambiguous, choose the category that best matches the overall context. "
+
+    "For sorting requests, always use the sort_expenses tool. "
+    "Use amount when sorting by money or spending. "
+    "Use date when sorting by newest or oldest. "
+    "Use category when sorting alphabetically by category. "
+    "Use description when sorting alphabetically by description. "
+    "Use ascending for lowest amount, oldest date, A-Z category, or A-Z description. "
+    "Use descending for highest amount, newest date, Z-A category, or Z-A description. "
 
     "After receiving a tool result, give the user a concise natural-language answer."
 )
@@ -159,9 +166,42 @@ tools = [
                 "required": ["search_term"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sort_expenses",
+            "description": "Sort expenses temporarily. Use this tool whenever the user asks to sort, order, arrange, or list expenses by amount, date, category, or description.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sort_by": {
+                        "type": "string",
+                        "enum": [
+                            "amount",
+                            "date",
+                            "category",
+                            "description"
+                        ],
+                        "description": "Choose exactly one: amount for money, date for newest or oldest, category for category alphabetical order, description for description alphabetical order."
+                    },
+                    "order": {
+                        "type": "string",
+                        "enum": [
+                            "ascending",
+                            "descending"
+                        ],
+                        "description": "Choose ascending or descending. A-Z and oldest/lowest use ascending. Z-A and newest/highest use descending."
+                    }
+                },
+                "required": [
+                    "sort_by",
+                    "order"
+                ]
+            }
+        }
     }
 ]
-
 
 
 def ask_ai(question: str, expenses: dict) -> str:
@@ -249,7 +289,7 @@ def ask_ai(question: str, expenses: dict) -> str:
 
                 return f"Invalid category selected by AI: {category}"
 
-            if not isinstance(money, (int, float)) or isinstance(money, bool) or money <= 0:
+            if type(money) not in (int, float) or money <= 0:
 
                 return "Invalid expense amount selected by AI."
 
@@ -287,25 +327,25 @@ def ask_ai(question: str, expenses: dict) -> str:
             if not search_term:
                 return "I couldn't determine which expense you want to delete."
 
-            results = search_expenses(expenses, search_term)
-
-            if not results:
-                return f"No expenses found for '{search_term}'."
-
             matches = []
 
-            for category, category_expenses in results.items():
-                for _, expense in enumerate(category_expenses):
+            for category, category_expenses in expenses.items():
+                for orig_idx, expense in enumerate(category_expenses):
                     money, description, time = expense
 
-                    matches.append(
-                        {
-                            "category": category,
-                            "money": money,
-                            "description": description,
-                            "time": time
-                        }
-                    )
+                    if (search_term.lower() in category.lower()) or (search_term.lower() in description.lower()) or (search_term.lower() in time.lower()):
+                        matches.append(
+                            {
+                                "category": category,
+                                "index": orig_idx,
+                                "money": money,
+                                "description": description,
+                                "time": time
+                            }
+                        )
+
+            if not matches:
+                return f"No expenses found for '{search_term}'."
 
             print("\nExpenses found: ")
 
@@ -340,17 +380,7 @@ def ask_ai(question: str, expenses: dict) -> str:
             if confirmation != "y":
                 return "Expense deletion cancelled."
 
-            category = selected["category"]
-
-            index = expenses[category].index(
-                [
-                    selected["money"],
-                    selected["description"],
-                    selected["time"]
-                ]
-            )
-
-            result = delete_expense(expenses, category, index)
+            result = delete_expense(expenses, selected["category"], selected["index"])
             return result
 
         elif tool_name == "edit_expense":
@@ -364,25 +394,25 @@ def ask_ai(question: str, expenses: dict) -> str:
             if not search_term:
                 return "I couldn't determine which expense you want to edit."
 
-            results = search_expenses(expenses, search_term)
-
-            if not results:
-                return f"No expenses found for '{search_term}'."
-
             matches = []
 
-            for category, category_expenses in results.items():
-                for expense in category_expenses:
+            for category, category_expenses in expenses.items():
+                for orig_idx, expense in enumerate(category_expenses):
                     money, description, time = expense
 
-                    matches.append(
-                        {
-                            "category": category,
-                            "money": money,
-                            "description": description,
-                            "time": time
-                        }
-                    )
+                    if (search_term.lower() in category.lower()) or (search_term.lower() in description.lower()) or (search_term.lower() in time.lower()):
+                        matches.append(
+                            {
+                                "category": category,
+                                "index": orig_idx,
+                                "money": money,
+                                "description": description,
+                                "time": time
+                            }
+                        )
+
+            if not matches:
+                return f"No expenses found for '{search_term}'."
 
             print("\nExpenses found:")
 
@@ -414,7 +444,7 @@ def ask_ai(question: str, expenses: dict) -> str:
             else:
                 new_description = str(new_description).strip()
 
-            if not isinstance(new_money, (int, float)) or isinstance(new_money, bool) or new_money <= 0:
+            if type(new_money) not in (int, float) or new_money <= 0:
                 return "Invalid new expense amount."
 
             print("\nExpense to update:")
@@ -429,18 +459,43 @@ def ask_ai(question: str, expenses: dict) -> str:
             if confirmation != "y":
                 return "Expense update cancelled."
 
-            category = selected["category"]
-
-            index = expenses[category].index(
-                [
-                    selected["money"],
-                    selected["description"],
-                    selected["time"]
-                ]
-            )
-
-            result = edit_expense(expenses, category, index, float(new_money), new_description)
+            result = edit_expense(expenses, selected["category"], selected["index"], float(new_money), new_description)
             return result
+
+        elif tool_name == "sort_expenses":
+            arguments = tool_call.function.arguments
+
+            sort_by = arguments.get("sort_by", "").strip().lower()
+            order = arguments.get("order", "").strip().lower()
+
+            valid_sort_fields = {
+                "amount",
+                "date",
+                "category",
+                "description"
+            }
+
+            valid_orders = {"ascending", "descending"}
+
+            if sort_by not in valid_sort_fields:
+                return f"Invalid sorting field: {sort_by}"
+
+            if order not in valid_orders:
+                return f"Invalid sorting order: {order}"
+
+            descending = order == "descending"
+
+            result = sort_expenses(expenses, sort_by, descending)
+
+            if not result:
+                return "No expenses found."
+
+            print("\nSorted Expenses: ")
+
+            for index, expense in enumerate(result, start=1):
+                print(f"{index}. {expense['category']} - ${expense['money']:.2f} - {expense['description']} - {expense['date']}")
+
+            return f"Expenses sorted by {sort_by} in {order} order successfully."
 
         else:
             return f"Unknown tool: {tool_name}"

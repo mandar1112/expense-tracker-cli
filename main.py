@@ -2,6 +2,7 @@
 from categories import category_selector
 from storage import load_expenses
 from expense_manager import add_expense, edit_expense, search_expenses, show_total, delete_expense, category_summary
+from ai_assistant import ask_ai
 
 
 
@@ -41,11 +42,12 @@ def main() -> None:
                 "5. Category Summary\n"
                 "6. Edit Expense\n"
                 "7. Search Expenses\n"
-                "8. Exit\n"
+                "8. AI Assistant\n"
+                "9. Exit\n"
                 "Choice: "
             ))
 
-            if choice < 1 or choice > 8:
+            if choice < 1 or choice > 9:
                 raise ValueError
             
         except ValueError:
@@ -209,8 +211,28 @@ def main() -> None:
                     for i, (money, description, time) in enumerate(category_expenses, start=1):
                         print(f"{i}. ${money:.2f} - {description} - {time}")
 
-            
+
             case 8:
+                while True:
+                    question = input("Ask AI: ").strip()
+
+                    if not question:
+                        print("Question cannot be empty.\n")
+                        continue
+
+                    if question.lower() == "q":
+                        print("Returning to Expense Tracker...\n")
+                        break
+
+                    try:
+                        answer = ask_ai(question, expenses)
+                        print(f"\n{answer}\n")
+
+                    except Exception as error:
+                        print(f"\nError: {error}\n")
+
+            
+            case 9:
                 print("Exiting...")
                 break
 
