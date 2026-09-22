@@ -87,3 +87,31 @@ def category_summary(expenses: dict) -> tuple[dict, float]:
     
     return result, all_total
 
+
+def merge_sort(expenses: list, key) -> list:
+    if len(expenses) <= 1:
+        return expenses
+
+    middle = len(expenses) // 2
+
+    left = merge_sort(expenses[:middle], key)
+    right = merge_sort(expenses[middle:], key)
+
+    result = []
+    left_index = 0
+    right_index = 0
+
+    while left_index < len(left) and right_index < len(right):
+
+        if key(left[left_index]) <= key(right[right_index]):
+            result.append(left[left_index])
+            left_index += 1
+        else:
+            result.append(right[right_index])
+            right_index += 1
+
+    result.extend(left[left_index:])
+    result.extend(right[right_index:])
+
+    return result
+
