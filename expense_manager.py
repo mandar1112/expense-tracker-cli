@@ -86,3 +86,4 @@ def category_summary(expenses: dict) -> tuple[dict, float]:
         all_total += total
     
     return result, all_total
+
